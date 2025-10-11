@@ -2,7 +2,7 @@
 <h1 align="center"><b> Hotel Vista Dorada </b><img src="https://cdn.pixabay.com/animation/2022/10/04/09/26/09-26-40-855_512.gif" width="25"></h1>
 <!--  -->
 <p align="center">
-  <img src="https://readme-typing-svg.herokuapp.com?font=Time+New+Roman&color=cyan&size=25&center=true&vCenter=true&width=600&height=100&lines=Facultad+de+Ingeniería...&hearts;++;TF:+Estructura+de+datos+y+Algoritmos;Presentado+por:+Begonia-Vela,;Sandra-Marin,;Jesús-Pinedo,;Carlos-Yupanqui,;Ánimos+para+el+siguiente+ciclo..<3">
+  <img src="https://readme-typing-svg.herokuapp.com?font=Time+New+Roman&color=cyan&size=25&center=true&vCenter=true&width=600&height=100&lines=Facultad+de+Ingeniería...&hearts;++;TF:+Fundamentos+de+Programación+II;Presentado+por:+Begonia-Vela,;Sandra-Marin,;Jesús-Pinedo,;Carlos-Yupanqui,;Ánimos+para+el+siguiente+ciclo..<3">
 	<img width="13%" align="right" alt="Github" src="https://upload.wikimedia.org/wikipedia/commons/f/fc/UPC_logo_transparente.png" />
 	
 </p>
