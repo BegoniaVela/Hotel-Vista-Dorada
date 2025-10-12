@@ -17,7 +17,7 @@
 
 El Hotel Vista Dorada implementó un programa que le permita **gestionar sus habitaciones, reservas y consumos durante la estadía de los huéspedes**.
 
----
+
 
 ## 🏠 Descripción general del sistema
 
@@ -44,7 +44,7 @@ Existen **dos tipos de consumos adicionales**:
 
 El sistema permite calcular el **monto total a pagar** por habitación, sumando el costo del alojamiento y los consumos adicionales registrados durante la estadía.
 
----
+
 
 ## ⚙️ Flujo de procesos
 
@@ -70,7 +70,7 @@ Tras la verificación de housekeeping, se emite la **factura electrónica** y la
 ### 5. Reportería administrativa
 El sistema permite a la recepción generar **reportes diarios** de ocupación e ingresos en segundos, reemplazando conciliaciones manuales y reduciendo tiempos de gestión.
 
----
+
 
 ## ⚖️ Reglas y exclusiones del sistema
 
@@ -78,7 +78,8 @@ El sistema permite a la recepción generar **reportes diarios** de ocupación e 
 - Una **habitación** puede existir sin consumos registrados, pero no sin **categoría asignada**.  
 - Una **reserva** solo puede crearse si existe disponibilidad real de la habitación.  
 - Una **habitación** debe eliminarse solo si el hotel (administrador del sistema) también es eliminado.  
-- Si el usuario ingresa una opción inexistente en los menús del sistema (p. ej. menú de recepción, caja o reportes), se debe lanzar una **excepción personalizada** con el mensaje:  
+- Si el usuario ingresa una opción inexistente en los menús del sistema (p. ej. menú de recepción, caja o reportes), se debe lanzar una **excepción personalizada** con el mensaje:
+    
   ```python
   "Opción inválida. Por favor seleccione una opción del menú."
 
