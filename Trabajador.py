@@ -1,11 +1,13 @@
 class Trabajador():
-    def __init__(self, codigo_Trabajador , nombre_trabajador, dni_trabajador, telefono_trabajador):
-        self.__codigo_Trabajador = codigo_Trabajador
+    def __init__(self, codigo_trabajador , nombre_trabajador, dni_trabajador, telefono_trabajador):
+        self.__codigo_trabajador = codigo_trabajador
         self.__no_trabajador = nombre_trabajador
+        self.__dni_trabajador = dni_trabajador
+        self.__telefono_trabajador = telefono_trabajador
 
     def __str__(self):
-        return f"Habitacion Numero: {self.__codigo_Trabajador} , Precio: {self.__no_trabajador}"
+        return f"Codigo del Trabajador: {self.__codigo_trabajador} , Nombre: {self.__no_trabajador}, Numero de DNI: {self.__dni_trabajador}, Numero Telefonico: {self.__telefono_trabajador}"
     
-    def GetPrecio(self):
-        return self.__precio
+    def CheckOut(self):
+        pass
         
