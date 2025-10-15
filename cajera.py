@@ -259,7 +259,7 @@ def menuCajero():
     ejecutarMenuCajero()
 
 
-# ========== PROGRAMA PRINCIPAL ==========
+
 def main():
     GenerarDatosPrueba()
     menuCajero()
