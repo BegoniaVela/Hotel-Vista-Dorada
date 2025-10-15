@@ -1,16 +1,14 @@
-import csv
 import os
 from datetime import datetime, timedelta
-
-CSV_DIR = "csv"
-HABITACIONES_CSV = os.path.join(CSV_DIR, "habitaciones_hotel.csv")
-REGISTROS_CSV = os.path.join(CSV_DIR, "registros_hotel.csv")
 
 ROOM_SERVICE_TARIFA = 50.0  # fijo
 DATE_FMT = "%d/%m/%Y"
 
 
+# -----------
 # Utilidades
+# -----------
+
 class OpcionInvalida(Exception):
     pass
 
@@ -32,303 +30,517 @@ def rango_se_solapa(a_inicio, a_fin, b_inicio, b_fin) -> bool:
     return a_inicio <= b_fin and b_inicio <= a_fin
 
 
-def leer_csv(path):
-    with open(path, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-def escribir_csv(path, filas, fieldnames):
-    nuevo = not os.path.exists(path)
-    with open(path, "a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        if nuevo:
-            w.writeheader()
-        for row in filas:
-            w.writerow(row)
-
-
-# Modelos
-class Cliente:
-    def __init__(self, dni: str, nombre: str, apellido: str, telefono: str = ""):
-        self.dni = dni
-        self.nombre = nombre
-        self.apellido = apellido
-        self.telefono = telefono
-
-    def __str__(self):
-        return f"DNI: {self.dni}, Nombre: {self.nombre} {self.apellido}"
-
-
-class Habitacion:
-    def __init__(self, id_habitacion: str, categoria: str, precio_noche: float):
-        self.id = id_habitacion
-        self.categoria = categoria
-        self.precio_noche = float(precio_noche)
-
-    def __str__(self):
-        return f"{self.id} ({self.categoria}) - S/ {self.precio_noche:.2f}"
-
-
-class Reserva:
-    def __init__(self, cliente: Cliente, habitacion: Habitacion,
-                 fecha_entrada: datetime, dias: int,
-                 consumo_minibar: float = 0.0, consumo_room_service: float = 0.0, late_checkout: int = 0):
-        self.cliente = cliente
-        self.habitacion = habitacion
-        self.fecha_entrada = fecha_entrada
-        self.dias = int(dias)
-        self.fecha_salida = fecha_entrada + timedelta(days=self.dias)
-        self.consumo_minibar = float(consumo_minibar)
-        self.consumo_room_service = float(consumo_room_service)
-        self.late_checkout = int(late_checkout)  # 1 sí / 0 no
-
-    @property
-    def total_hospedaje(self) -> float:
-        return self.habitacion.precio_noche * self.dias
-
-    @property
-    def cargo_late_checkout(self) -> float:
-        # equivalente a 4 horas: precio/24*4 = precio/6
-        return (self.habitacion.precio_noche / 6.0) if self.late_checkout == 1 else 0.0
-
-    @property
-    def total_a_pagar(self) -> float:
-        return self.total_hospedaje + self.consumo_minibar + self.consumo_room_service + self.cargo_late_checkout
-
-    def resumen(self) -> str:
-        return (
-            "--------MENU RECEPCIONISTA--------\n"
-            "Reserva generada:\n"
-            f"  Nombre: {self.cliente.nombre} {self.cliente.apellido}\n"
-            f"  DNI: {self.cliente.dni}\n"
-            f"  Numero de celular: {self.cliente.telefono or '-'}\n"
-            f"  Cantidad de invitados extra: 0\n"
-            f"  Fecha Ingreso: {self.fecha_entrada.strftime(DATE_FMT)}\n"
-            f"  Fecha salida: {self.fecha_salida.strftime(DATE_FMT)}\n"
-            f"  Cantidad de dias: {self.dias}\n"
-            f"  Precio: {int(self.habitacion.precio_noche)}\n"
-            f"  Habitacion: {self.habitacion.id}\n"
-            f"  Precio a cancelar: s/ {int(self.total_a_pagar)}\n"
-        )
-
-
-# Capa de datos
-def cargar_habitaciones() -> list[Habitacion]:
-    rows = leer_csv(HABITACIONES_CSV)
-    return [Habitacion(r["ID_Habitacion"], r["Categoria"], float(r["Precio"])) for r in rows]
-
-
-def cargar_registros():
-    if not os.path.exists(REGISTROS_CSV):
-        return []
-    return leer_csv(REGISTROS_CSV)
-
-
 def proximo_id_registro(registros) -> int:
     if not registros:
         return 1
     return max(int(r["ID_Registro"]) for r in registros) + 1
 
 
-def habitaciones_disponibles(fecha_entrada: datetime, fecha_salida: datetime) -> list[str]:
-    """Devuelve IDs de habitaciones libres en el rango solicitado."""
-    habitaciones = {h.id for h in cargar_habitaciones()}
-    registros = cargar_registros()
-    ocupadas = set()
-
-    for r in registros:
-        he = parse_fecha(r["Fecha_Entrada"])
-        hs = parse_fecha(r["Fecha_Salida"])
-        if rango_se_solapa(fecha_entrada, fecha_salida - timedelta(days=1), he, hs - timedelta(days=1)):
-            ocupadas.add(r["ID_Habitacion"])
-
-    return sorted(list(habitaciones - ocupadas))
+# -----------
+# MODELOS
+# -----------
 
 
-def guardar_reserva_csv(reserva: Reserva, id_cliente: str = "A000"):
-    registros = cargar_registros()
-    nuevo_id = proximo_id_registro(registros)
+# -------- CLIENTE --------
+class Cliente:
+    def __init__(self, nombre, apellido, dni, celular):
+        self.__nombre = nombre
+        self.__apellido = apellido
+        self.__dni = dni
+        self.__celular = celular
 
-    row = {
-        "ID_Registro": str(nuevo_id),
-        "ID_Cliente": id_cliente,  # puedes mapear tu DNI a un ID real si gustas
-        "ID_Habitacion": reserva.habitacion.id,
-        "Fecha_Entrada": reserva.fecha_entrada.strftime(DATE_FMT),
-        "Fecha_Salida": reserva.fecha_salida.strftime(DATE_FMT),
-        "Cantidad_dias": str(reserva.dias),
-        "Precio_Noche": str(int(reserva.habitacion.precio_noche)),
-        "Consumo_Minibar": str(int(reserva.consumo_minibar)),
-        "Consumo_RoomService": str(int(reserva.consumo_room_service)),
-        "LateCheckout": str(reserva.late_checkout),
-    }
+    @property
+    def nombre(self):
+        return self.__nombre
 
-    escribir_csv(
-        REGISTROS_CSV,
-        [row],
-        fieldnames=list(row.keys())
-    )
-    return nuevo_id
+    @property
+    def apellido(self):
+        return self.__apellido
 
+    @property
+    def dni(self):
+        return self.__dni
 
-# Menus
-def ui_menu():
-    print("""
--------- MENU RECEPCIONISTA --------
-1) Consultar reserva por DNI
-2) Generar reserva
-3) Check-out
-4) Historial (CSV)
-5) Salir
-""")
+    @property
+    def celular(self):
+        return self.__celular
+
+    def __str__(self):
+        return (f"""
+        Nombre: {self.__nombre}
+        Apellido: {self.__apellido}
+        DNI:{self.__dni}
+        Celular:{self.__celular}""")
 
 
-def input_opcion(msg="Seleccione una opción: "):
-    op = input(msg).strip()
-    if op not in {"1", "2", "3", "4", "5"}:
-        raise OpcionInvalida("Opción inválida. Por favor seleccione una opción del menú.")
-    return op
+# -------- HABITACION --------
+class Habitacion:
+    def __init__(self, id_habitacion, categoria, precio_noche):
+        self.__id_habitacion = id_habitacion
+        self.__categoria = categoria
+        self.__precio_noche = float(precio_noche)
+
+    @property
+    def id_habitacion(self):
+        return self.__id_habitacion
+
+    @property
+    def categoria(self):
+        return self.__categoria
+
+    @property
+    def precio_noche(self):
+        return self.__precio_noche
+
+    def __str__(self):
+        return f"""{self.__id_habitacion} ({self.__categoria}) - S/ {self.__precio_noche:.2f}"""
 
 
-def flujo_consultar():
-    dni = input("Ingrese DNI a consultar: ").strip()
-    regs = cargar_registros()
-    encontrados = [r for r in regs if r["ID_Cliente"] == dni or r["ID_Cliente"] == f"A{dni}"]
-    if not encontrados:
-        print("No se encontraron reservas para ese DNI.")
-    else:
-        print("\n--- Reservas ---")
-        for r in encontrados:
-            print(r)
-    pausar()
+# -------- RESERVA --------
+class Reserva:
+    def __init__(self, cliente: Cliente, habitacion: Habitacion,
+                 fecha_entrada: datetime, dias: int,
+                 consumo_minibar: float = 0.0, consumo_room_service: float = 0.0, late_checkout: int = 0):
+        self.__cliente = cliente
+        self.__habitacion = habitacion
+        self.__fecha_entrada = fecha_entrada
+        self.__dias = int(dias)
+        self.__fecha_salida = fecha_entrada + timedelta(days=self.__dias)
+        self.__consumo_minibar = float(consumo_minibar)
+        self.__consumo_room_service = float(consumo_room_service)
+        self.__late_checkout = int(late_checkout)  # 1 sí / 0 no
+        self.__estado = "Confirmada"  # Se podra actualizar a Activa, Finalizada o Cancelada
+
+    @property
+    def cliente(self):
+        return self.__cliente
+
+    @property
+    def fecha_entrada(self):
+        return self.__fecha_entrada
+
+    @property
+    def fecha_salida(self):
+        return self.__fecha_salida
+
+    @property
+    def habitacion(self):
+        return self.__habitacion
+
+    @property
+    def estado(self):
+        return self.__estado
+
+    @estado.setter
+    def estado(self, valor):
+        self.__estado = valor
+
+    @property
+    def total_hospedaje(self) -> float:
+        return self.__habitacion.precio_noche * self.__dias
+
+    @property
+    def cargo_late_checkout(self) -> float:
+        # equivalente a 4 horas: precio/24*4 = precio/6
+        return (self.__habitacion.precio_noche / 6.0) if self.__late_checkout == 1 else 0.0
+
+    @property
+    def total_a_pagar(self) -> float:
+        return self.total_hospedaje + self.__consumo_minibar + self.__consumo_room_service + self.cargo_late_checkout
+
+    def resumen(self) -> str:
+        return (
+            "--------MENU RECEPCIONISTA--------\n"
+            "Reserva generada:\n"
+            f"  Nombre: {self.__cliente.nombre} {self.__cliente.apellido}\n"
+            f"  DNI: {self.__cliente.dni}\n"
+            f"  Numero de celular: {self.__cliente.celular or '-'}\n"
+            f"  Cantidad de invitados extra: 0\n"
+            f"  Fecha Ingreso: {self.__fecha_entrada.strftime(DATE_FMT)}\n"
+            f"  Fecha salida: {self.__fecha_salida.strftime(DATE_FMT)}\n"
+            f"  Cantidad de dias: {self.__dias}\n"
+            f"  Precio: {int(self.__habitacion.precio_noche)}\n"
+            f"  Habitacion: {self.__habitacion.id_habitacion}\n"
+            f"  Precio a cancelar: s/ {int(self.total_a_pagar)}\n"
+            f"  Estado : {self.__estado}\n"
+        )
 
 
-def flujo_generar_reserva():
-    print("------ Generando Reserva ------")
-    dni = input("DNI: ").strip()
-    nombre = input("Nombre: ").strip()
-    apellido = input("Apellido: ").strip()
-    telefono = input("Número de celular (opcional): ").strip()
-    fecha_txt = input("Fecha de ingreso (dd/mm/aaaa): ").strip()
-    dias = int(input("Cantidad de días: ").strip())
-
-    fecha_entrada = parse_fecha(fecha_txt)
-    fecha_salida = fecha_entrada + timedelta(days=dias)
-
-    libres = habitaciones_disponibles(fecha_entrada, fecha_salida)
-    if not libres:
-        print("\nNo hay habitaciones disponibles para ese rango de fechas.")
-        pausar()
-        return
-
-    print(f"\nHabitaciones disponibles: {libres}")
-    eleccion = input("Seleccione ID de habitación: ").strip()
-    if eleccion not in libres:
-        print("Habitación no disponible o inválida.")
-        pausar()
-        return
-
-    # Obtener precio y categoría desde CSV
-    hab_match = [h for h in cargar_habitaciones() if h.id == eleccion][0]
-    cliente = Cliente(dni, nombre, apellido, telefono)
-    reserva = Reserva(cliente, hab_match, fecha_entrada, dias)
-
-    print("\n" + reserva.resumen())
-
-    guardar_reserva_csv(reserva, id_cliente=dni)
-    pausar()
-
-
-def flujo_checkout():
-    print("------ Check-out ------")
-    id_registro = input("ID_Registro (según CSV): ").strip()
-    registros = cargar_registros()
-    r = next((x for x in registros if x["ID_Registro"] == id_registro), None)
-    if not r:
-        print("Registro no encontrado.")
-        pausar()
-        return
-
-    # Calcular cargo LateCheckout
-    hab = next(h for h in cargar_habitaciones() if h.id == r["ID_Habitacion"])
-    precio_noche = float(hab.precio_noche)
-
-    minibar = float(r.get("Consumo_Minibar", 0) or 0)
-    rs = float(r.get("Consumo_RoomService", 0) or 0)
-
-    aplicar_rs = input("¿Agregar un Room Service? (s/n): ").strip().lower() == "s"
-    if aplicar_rs:
-        rs += ROOM_SERVICE_TARIFA
-
-    aplicar_lc = input("¿Late checkout? (s/n): ").strip().lower() == "s"
-    cargo_lc = (precio_noche / 6.0) if aplicar_lc else 0.0
-
-    total_hospedaje = precio_noche * int(r["Cantidad_dias"])
-    total = total_hospedaje + minibar + rs + cargo_lc
-
-    print("\n--- Resumen Check-out ---")
-    print(f"Habitación: {r['ID_Habitacion']}  |  Noches: {r['Cantidad_dias']}")
-    print(f"Precio por noche: S/ {precio_noche:.2f}")
-    print(f"Consumo minibar: S/ {minibar:.2f}")
-    print(f"Room service: S/ {rs:.2f}")
-    print(f"Late checkout: S/ {cargo_lc:.2f}")
-    print(f"TOTAL A PAGAR: S/ {total:.2f}")
-
-    # Actualizar fila en CSV
-    for row in registros:
-        if row["ID_Registro"] == id_registro:
-            row["Consumo_RoomService"] = str(int(rs))
-            row["LateCheckout"] = "1" if aplicar_lc else "0"
-            break
-
-    # Archivo con cambios
-    with open(REGISTROS_CSV, "w", newline="", encoding="utf-8") as f:
-        fieldnames = [
-            "ID_Registro", "ID_Cliente", "ID_Habitacion", "Fecha_Entrada", "Fecha_Salida",
-            "Cantidad_dias", "Precio_Noche", "Consumo_Minibar", "Consumo_RoomService", "LateCheckout"
+# -------- GESTION DE LAS HABITACIONES --------
+class GestionHotel:
+    def __init__(self):
+        self.__habitaciones = [
+            Habitacion("G201", "Simple", 80),
+            Habitacion("G202", "Matrimonial", 120),
+            Habitacion("G203", "Estandar", 100),
+            Habitacion("G204", "Matrimonial", 120),
+            Habitacion("G205", "Estandar", 100),
+            Habitacion("G206", "Estandar", 100),
+            Habitacion("G207", "Simple", 80),
+            Habitacion("G208", "Simple", 80),
+            Habitacion("G209", "Matrimonial", 120),
         ]
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
-        for row in registros:
-            w.writerow(row)
 
-    pausar()
+        self.__categoria_precios = {
+            h.categoria: h.precio_noche for h in self.__habitaciones
+        }
+
+        self.__reservas = []
+
+    def obtener_habitacion(self):
+        return self.__habitaciones
+
+    def obtener_categorias(self):
+        return self.__categoria_precios
+
+    def obtener_reservas(self):
+        return self.__reservas
+
+    def habitaciones_disponibles(self, fecha_entrada: datetime, fecha_salida: datetime) -> list[str]:
+        """Devuelve Ids de habitaciones libres en el reango solicitado"""
+        habitaciones = {h.id_habitacion for h in self.__habitaciones}
+        registros = self.__reservas
+        ocupadas = set()
+
+        for r in registros:
+            if r.estado == "Cancelado":
+                continue
+
+            try:
+                he = r.fecha_entrada
+                hs = r.fecha_salida
+            except Exception:
+                continue  # Si hay una fecha invalida, la salta
+
+            if rango_se_solapa(fecha_entrada, fecha_salida - timedelta(days=1), he, hs - timedelta(days=1)):
+                ocupadas.add(r.habitacion.id_habitacion)
+
+        return sorted(list(habitaciones - ocupadas))
 
 
-def flujo_historial():
-    print("\n===== Historial (registros_hotel.csv) =====\n")
-    for r in cargar_registros():
-        print(r)
-    pausar()
+# -------- TRABAJADOR --------
+class Trabajador:
+    def __init__(self, codigo_trabajador, nombre_trabajador, dni_trabajador, telefono_trabajador):
+        self.__codigo_trabajador = codigo_trabajador
+        self.__nombre_trabajador = nombre_trabajador
+        self.__dni_trabajador = dni_trabajador
+        self.__telefono_trabajador = telefono_trabajador
+
+    def __str__(self):
+        return (
+            f"Código del Trabajador: {self.__codigo_trabajador}, "
+            f"Nombre: {self.__nombre_trabajador}, "
+            f"DNI: {self.__dni_trabajador}, "
+            f"Teléfono: {self.__telefono_trabajador}"
+        )
+
+    def check_out(self):
+        # Aquí más adelante se podría registrar salida, hora o actualizar estado
+        pass
 
 
-# Loop principal
-def main():
-    while True:
-        clear()
-        ui_menu()
+# -------- RECEPCIONISTA --------
+class Recepcionista(Trabajador):
+    def __init__(self, codigo_trabajador, nombre_trabajador, dni_trabajador, telefono_trabajador, hotel: GestionHotel):
+        super().__init__(codigo_trabajador, nombre_trabajador, dni_trabajador, telefono_trabajador)
+        self.__hotel = hotel
+        # self.__reserva = reserva
+        # self.__cliente = cliente
+
+    def generar_reserva(self):
+        print("\n---GENERARANDO RESERVA---")
+        dni = input("DNI: ").strip()
+        nombre = input("Nombre: ").strip()
+        apellido = input("Apellido: ").strip()
+        telefono = input("Número de celular (opcional): ").strip()
+
+        fecha_str = input("Fecha de ingreso (dd/mm/aaaa): ").strip()
+        dias = int(input("Cantidad de días: ").strip())
+        fecha_ingreso = parse_fecha(fecha_str)
+        fecha_salida = fecha_ingreso + timedelta(days=dias)
+
+        # MOSTRAR CATEGORIAS
+        print("\n CATEGORIAS DISPONIBLES")
+        categorias = list(self.__hotel.obtener_categorias().items())
+        for i, (categoria, precio) in enumerate(categorias, start=1):
+            print(f"{i}.{categoria} - s/{precio:.2f} por noche")
+
+        # EXCEPCION: INGRESAR UN NUMERO INVALIDO
         try:
-            opcion = input_opcion()
-            if opcion == "1":
-                clear()
-                flujo_consultar()
-            elif opcion == "2":
-                clear()
-                flujo_generar_reserva()
-            elif opcion == "3":
-                clear()
-                flujo_checkout()
-            elif opcion == "4":
-                clear()
-                flujo_historial()
-            elif opcion == "5":
-                print("¡Hasta luego!")
+            elegir_categoria = int(input("Escriba la categoria que desea consultar: "))
+            categoria_elegida = categorias[elegir_categoria - 1][0]
+        except(ValueError, IndexError):
+            print("La opcion ingresada no es valida")
+            return
+
+        # BUSCAR HABITACIONES DISPONIBLES
+        disponibles_id = self.__hotel.habitaciones_disponibles(fecha_ingreso, fecha_salida)
+        disponibles = [
+            h for h in self.__hotel.obtener_habitacion()
+            if h.id_habitacion in disponibles_id and h.categoria == categoria_elegida
+        ]
+
+        if not disponibles:
+            print("No hay habitaciones disponibles para esta categoria.")
+            return
+
+        print("\n HABITACIONES DISPONIBLES")
+        for i, hab in enumerate(disponibles, start=1):
+            print(f"{i}. {hab}")
+
+        # EXCEPCION AL INGRESAR UNA HABITACION INCORRECTA
+        try:
+            num_hab = int(input("\n Ingrese el numero de la habitacion:"))
+            habitacion = disponibles[num_hab - 1]
+        except(ValueError, IndexError):
+            print("La opcion ingresada no es valida")
+            return
+
+        cliente = Cliente(nombre, apellido, dni, telefono)
+        reserva = Reserva(cliente, habitacion, fecha_ingreso, dias)
+
+        self.__hotel.obtener_reservas().append(reserva)
+
+        print("\n Reserva generada extosamente")
+        print(reserva.resumen())
+        pausar()
+
+    def check_in(self):
+        print("\n REALIZANDO CHECK IN")
+
+        reservas = self.__hotel.obtener_reservas()
+        encontrado = False
+        dni = input("Ingrese el DNI: ").strip()
+
+        for reserva in reservas:
+            cliente = reserva.cliente
+
+            if cliente.dni == dni:
+                encontrado = True
+
+                if reserva.estado == "Confirmada":
+                    reserva.estado = "Activa"
+                    print(f"\nCheck In realizado exitosamente")
+                    print(f"    Cliente: {cliente.nombre} {cliente.apellido}")
+                    print(f"    Habitacion: {reserva.habitacion}")
+                    print(f"    Estado: {reserva.estado}")
+
+        if not encontrado:
+            print("No se encontro ninguna reserva con el DNI ingresado")
+
+        pausar()
+
+    def cancelar_reserva_dni(self):
+        print("\n CANCELAR RESERVA:")
+        reservas = self.__hotel.obtener_reservas()
+        encontrado = False
+        dni = input("Ingrese el DNI").strip()
+
+        for reserva in reservas:
+            cliente = reserva.cliente
+            if cliente.dni == dni:
+                print("\n RESERVA ENCONTRADA")
+                print(reserva.resumen())
+
+                confirmar = input("¿Desea cancelar la reserva? (s/n)").strip().lower()
+                if confirmar == "s":
+                    reserva.estado = "Cancelado"
+                    print("Reserva cancelada, la habitacion queda disponible")
+                else:
+                    print("Cancelacion abortada")
+
+                encontrado = True
                 break
+
+        if not encontrado:
+            print("No se encontro ninguna reserva asociada a ese DNI")
+
+        pausar()
+
+    def cancelar_reserva_lista(self):
+        print("\n CANCELAR RESERVA:")
+        reservas = self.__hotel.obtener_reservas()
+
+        if not reservas:
+            print("No se han registrado reservas")
+            return
+
+        print("\n LISTA DE RESERVAS:")
+        for i, reserva in enumerate(reservas, start=1):
+            cliente = reserva.cliente
+            print(f"{i}. {cliente.nombre} {cliente.apellido}, DNI: {cliente.dni}, Estado: {reserva.estado} ")
+
+        # EXCEPCION AL INGRESAR UN NUMERO DE LA LISTA ERRONEAMENTE
+        try:
+            num = int(input("\n Ingrese el numero de la reserva a cancelar: "))
+            if num < 1 or num > len(reservas):
+                raise IndexError
+            reserva = reservas[num - 1]
+        except(ValueError, IndexError):
+            print("Opcion invalida, Intente nuevamente")
+            return
+
+        print("\n Reserva seleccionada:")
+        print(reserva.resumen())
+
+        confirmar = input("¿Desea cancelar la reserva? (s/n): ").strip().lower()
+        if confirmar == "s":
+            reserva.estado = "Cancelado"
+            print("Reserva cancelada, la habitcion queda disponible")
+        else:
+            print("Cancelacion abortada")
+
+        pausar()
+
+    # ---------MENU CANCELAR----------------
+    def menu_cancelar(self):
+        while True:
+            try:
+                clear()
+
+                print("""
+-----MENU RECEPCIONISTA ------)
+Cancelar: 
+1. lista de Reservas
+2. Busqueda por DNI
+3. Volver al menu""")
+
+                opcion = input("Seleccione una opcion(1-3): ").strip()
+
+                if opcion not in {"1", "2", "3"}:
+                    raise OpcionInvalida("Opcion invalida. Intente nuevamente")
+
+                if opcion == "1":
+                    self.cancelar_reserva_lista()
+                elif opcion == "2":
+                    self.cancelar_reserva_dni()
+                elif opcion == "3":
+                    print("\n Regresando al menu general")
+                    break
+            except OpcionInvalida as e:
+                print(e)
+                pausar()
+            except Exception as e:
+                print(f"Ocurrio un error: {e}")
+                pausar()
+
+    # ---------MENU RECEPCIONISTA----------------
+    def menu_recepcionista(self):
+        while True:
+            try:
+                clear()
+                print("""
+-------- MENU RECEPCIONISTA --------
+1) Generar Reserva
+2) Check-In
+3) Check-out
+4) Cancelar Reserva
+5) Regresar al menu general""")
+
+                opcion = input("Seleccione una opcion(1-5): ").strip()
+
+                if opcion not in {"1", "2", "3", "4", "5"}:
+                    raise OpcionInvalida("Opcion invalida. Intente nuevamente")
+
+                if opcion == "1":
+                    self.generar_reserva()
+                elif opcion == "2":
+                    self.check_in()
+                elif opcion == "3":
+                    self.check_out()
+                elif opcion == "4":
+                    self.menu_cancelar()
+                elif opcion == "5":
+                    print("\n Regresando al menu general")
+                    break
+            except OpcionInvalida as e:
+                print(e)
+
+            except Exception as e:
+                print(f"Ocurrio un error: {e}")
+                pausar()
+
+    # def consumo_minibar(self):
+    #     items = [
+    #         "Agua",
+    #         "Gaseosa",
+    #         "Frugos",
+    #         "Vino",
+    #         "Cerveza Corona"
+    #     ]
+    #     precios = [4 ,
+    #                5 ,
+    #                4 ,
+    #                40 ,
+    #                10]
+    #
+    #     print("\n REGISTRAR CONSUMO DEL MINIBAR")
+    #     dni = input("Ingrese el DNI").strip()
+    #     reservas = self.__hotel.obtener_reservas()
+    #
+    #     for reserva in reservas:
+    #         cliente = reserva.cliente
+    #         if cliente.dni == dni:
+    #             try:
+    #
+
+
+# MOSTRAR HISTORIAL DE RESERVA
+def mostrar_reservaciones(hotel: GestionHotel):  # Historial
+    lista = hotel.obtener_reservas()
+    if not lista:
+        print("No se ha hecho ninguna reserva todavia.")
+        return
+
+    print("---HISOTRIAL DE RESERVAS---")
+    for c, reserva in enumerate(lista, start=1):
+        print(f"\n {c}. {reserva.resumen()}")
+
+
+# ---------MENU GENERAL-----------
+def menu_principal(recepcionista: Recepcionista, hotel: GestionHotel):
+    while True:
+        try:
+            clear()
+            print("""
+-----------------------------
+     HOTEL VISTA DORADA
+-----------------------------
+
+-------MENU GENERAL---------      
+1. RECEPCIONISTA
+2. CAJERO
+3. GENERAR REPORTE DE RESERVAS
+4. SALIR""")
+            opcion = input("Seleccione una opcion(1-4): ").strip()
+
+            if opcion not in {"1", "2", "3", "4"}:
+                raise OpcionInvalida("Opcion invalida. Intente nuevamente")
+
+            if opcion == "1":
+                recepcionista.menu_recepcionista()
+            elif opcion == "2":
+                recepcionista.menu_cancelar()
+            elif opcion == "3":
+                mostrar_reservaciones(hotel)
+                input("\n Presione ENTER para volver al menu principal...")
+            elif opcion == "4":
+                print("Saliendo del sistema")
+                break
+
         except OpcionInvalida as e:
-            print(str(e))
-            pausar()
+            print(e)
+            input("Presiones ENTER para continuar")
+
         except Exception as e:
             print(f"Error: {e}")
-            pausar()
+            input("Presiones ENTER para continuar")
+
+
+def main():
+    hotel = GestionHotel()
+    recepcionista1 = Recepcionista("T722152", "Gabriela", 722152, 904229818, hotel)
+    menu_principal(recepcionista1, hotel)
 
 
 if __name__ == "__main__":
