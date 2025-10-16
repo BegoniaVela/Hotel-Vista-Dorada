@@ -106,6 +106,9 @@ class Reserva:
         self.__consumo_room_service = float(consumo_room_service)
         self.__late_checkout = int(late_checkout)  # 1 sí / 0 no
         self.__estado = "Confirmada" #Se podra actualizar a Activa, Finalizada o Cancelada
+        self.__pagado = False
+        self.__consumos = []
+                     
     @property
     def cliente(self):
         return self.__cliente
@@ -125,6 +128,7 @@ class Reserva:
     @property
     def estado(self):
         return self.__estado
+        
     @estado.setter
     def estado(self,valor):
         self.__estado = valor
@@ -146,6 +150,26 @@ class Reserva:
     def total_a_pagar(self) -> float:
         return self.total_hospedaje + self.__consumo_minibar + self.__consumo_room_service + self.cargo_late_checkout
 
+    #para cajero
+    def marcar_pagado(self):
+        self.__pagado = True
+
+    def esta_pagado(self):
+        return self.__pagado
+
+    def agregar_consumo(self, nombre, precio, cantidad=1):
+        self.__consumos.append({"nombre": nombre, "precio": precio, "cantidad": cantidad})
+
+    def get_consumos(self):
+        return self.__consumos
+
+    def total_consumos(self):
+        total = 0
+        for consumo in self.__consumos:
+            total += consumo["precio"] * consumo["cantidad"]
+        return total
+    #--------
+    
     def resumen(self) -> str:
         return (
             "--------MENU RECEPCIONISTA--------\n"
@@ -193,7 +217,14 @@ class GestionHotel:
     def obtener_reservas(self):
         return self.__reservas
 
-
+###
+    def buscar_reserva_por_dni(self, dni):
+        for reserva in self.__reservas:
+            if reserva.cliente.dni == dni:
+                return reserva
+        return None
+###        
+    
     def habitaciones_disponibles(self, fecha_entrada:datetime, fecha_salida: datetime) -> list[str]:
         """Devuelve Ids de habitaciones libres en el reango solicitado"""
         habitaciones = {h.id_habitacion for h in self.__habitaciones}
@@ -485,6 +516,152 @@ Cancelar:
 # REPORTES
 #-------------------------
 
+# clase cajero
+class Cajero(Trabajador):
+    def __init__(self, codigo_trabajador, nombre_trabajador, dni_trabajador, telefono_trabajador, hotel: GestionHotel):
+        super().__init__(codigo_trabajador, nombre_trabajador, dni_trabajador, telefono_trabajador)
+        self.__hotel = hotel
+     
+    def pagar_reserva(self):
+        clear()
+        print("""
+--------MENU CAJERO--------
+    Pagar Reserva:""")
+        dni = input("\tIngresar DNI: ").strip()
+
+        reserva = self.__hotel.buscar_reserva_por_dni(dni)
+                
+        if reserva is None:
+            print("\n\tNo se encontró ninguna reserva con ese DNI")
+            input("\n\tPresione ENTER para volver al menú 'Cajero'... ")
+            return
+
+        if reserva.esta_pagado():
+            print("\n\tEsta reserva ya ha sido pagada")
+            input("\n\tPresione ENTER para volver al menú 'Cajero'... ")
+            return
+    
+        # Mostrar información del huésped
+        clear()
+        print("""
+--------MENU CAJERO--------
+    Pagar Reserva:
+\tHuésped consultado:""")
+        print(f"\t    Nombre: {reserva.cliente.nombre} {reserva.cliente.apellido}")
+        print(f"\t    DNI: {reserva.cliente.dni}")
+        print(f"\t    Numero de celular: {reserva.cliente.celular}")
+        precio = reserva.total_a_pagar
+        print(f"\t    Precio Reserva: s/ {precio}")
+                    
+        metodo = input(f"\t    Proceder a pagar(Tarjeta / Efectivo): ").strip().lower()
+    
+        # Calcular precio final con comisión del 5%
+        comision = precio * 0.05
+        precioFinal = int(precio + comision)
+    
+        clear()
+        print("""
+--------MENU CAJERO--------
+    Pagar Reserva:
+\tPrecio Actualizado(5% comision): s/""", precioFinal)
+        print("""    
+\tPago Realizado: Si""")
+
+        reserva.marcar_pagado()
+
+        print("""
+--------MENU CAJERO--------
+    Pagar Reserva:
+\tRESERVA CANCELADA""")
+    
+        input("\n\tPresione ENTER para volver al menú 'Cajero'... ")
+
+    def check_out_cajero(self):
+        clear()
+        print("""
+--------MENU CAJERO--------
+    Check Out:""")
+        dni = input("\t    Ingresar DNI: ").strip()
+        
+        reserva = self.__hotel.buscar_reserva_por_dni(dni)
+
+        if reserva is None:
+            print("\n\t    No se encontró ninguna reserva con ese DNI")
+            input("\n\tPresione ENTER para volver al menú 'Cajero'... ")
+            return
+        # Mostrar resumen
+        clear()
+        print("""
+--------MENU CAJERO--------
+    Check Out:
+\t    Resumen:""")
+        print(f"\t\tNombre: {reserva.cliente.nombre} {reserva.cliente.apellido}")
+        print(f"\t\tDNI: {reserva.cliente.dni}")
+
+        #Muetra de consumos
+        for consumo in reserva.get_consumos():
+            if consumo["cantidad"] > 1:
+                print(f"\t\t    - {consumo['nombre']}(s/ {consumo['precio']}) : {consumo['cantidad']}")
+            else:
+                print(f"\t\t    - {consumo['nombre']}: s/ {consumo['precio']}")
+
+        totalConsumos = reserva.total_consumos()
+        print(f"\t\t    Total a pagar por consumos : s/ {totalConsumos}")
+
+        metodo = input("\t\t    Proceder a pagar(Tarjeta / Efectivo) : ").strip().lower()
+
+        #Calculo del precio final con 5% de comision
+        comision = totalConsumos * 0.05
+        precioFinal = totalConsumos + comision
+        
+        clear()
+        print("""
+--------MENU CAJERO--------
+    Check Out:
+\t    Precio Actualizado(5% comision) : s/""", precioFinal)
+        print("\t    Pago Realizado: Si")
+
+        print("""
+--------MENU CAJERO--------
+    Check Out:
+\t    CONSUMOS CANCELADOS""")
+
+        input("\n\tPresione ENTER para volver al menú 'Cajero'... ")
+
+    def menu_cajero(self):
+        while True:
+            try:
+                clear()
+                print("""
+--------MENU CAJERO--------
+    
+    Elija una opción:
+\t1. Pagar Reserva
+\t2. Check Out
+\t3. Regresar al menú general
+""")
+                opcion = input("Seleccione una opción (1-3): ").strip()
+
+                if opcion not in {"1", "2", "3"}:
+                    raise OpcionInvalida("Opción inválida. Intente nuevamente")
+
+                if opcion == "1":
+                    self.pagar_reserva()
+                elif opcion == "2":
+                    self.check_out_cajero()
+                elif opcion == "3":
+                    print("\nRegresando al menú principal...")
+                    break
+                    
+            except OpcionInvalida as e:
+                print(e)
+                pausar()
+            except Exception as e:
+                print(f"Ocurrió un error: {e}")
+                pausar()         
+#------------    
+
+
 def exportar_reservas_excel(hotel: GestionHotel, nombre_archivo = "reporte_reservas.xlsx"):
 
     reservas = hotel.obtener_reservas()
@@ -525,12 +702,12 @@ def mostrar_reservaciones(hotel: GestionHotel):  # Historial
         print("No se ha hecho ninguna reserva todavia.")
         return
 
-    print("---HISOTRIAL DE RESERVAS---")
+    print("---HISTORIAL DE RESERVAS---")
     for c, reserva in enumerate(lista, start=1):
         print(f"\n {c}. {reserva.resumen()}")
 
 #---------MENU GENERAL-----------
-def menu_principal(recepcionista: Recepcionista, hotel: GestionHotel):
+def menu_principal(recepcionista: Recepcionista, cajero: Cajero, hotel: GestionHotel):
     while True:
         try:
             clear()
@@ -552,7 +729,7 @@ def menu_principal(recepcionista: Recepcionista, hotel: GestionHotel):
             if opcion == "1":
                 recepcionista.menu_recepcionista()
             elif opcion == "2":
-                recepcionista.menu_cancelar()
+                cajero.menu_cajero()
             elif opcion == "3":
                 exportar_reservas_excel(hotel)
                 input("\n Presione ENTER para volver al menu principal...")
@@ -571,8 +748,11 @@ def menu_principal(recepcionista: Recepcionista, hotel: GestionHotel):
 def main():
     hotel = GestionHotel()
     recepcionista1 = Recepcionista("T722152", "Gabriela", 722152, 904229818, hotel)
-    menu_principal(recepcionista1, hotel)
+    cajero1 = Cajero("T722153", "Carlos", 722153, 904229819, hotel)
+    menu_principal(recepcionista1, cajero1, hotel)
+    
 
 if __name__ == "__main__":
 
     main()
+
