@@ -244,7 +244,7 @@ class Recepcionista(Trabajador):
         # self.__cliente = cliente
 
     def generar_reserva(self):
-        print("\n---GENERARANDO RESERVA---")
+        print("\n---GENERANDO RESERVA---")
         dni = input("DNI: ").strip()
         nombre = input("Nombre: ").strip()
         apellido = input("Apellido: ").strip()
@@ -574,4 +574,5 @@ def main():
     menu_principal(recepcionista1, hotel)
 
 if __name__ == "__main__":
+
     main()
